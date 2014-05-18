@@ -34,6 +34,8 @@ import org.apache.tez.dag.api.client.VertexStatus;
 import org.apache.tez.mapreduce.examples.terasort.TeraGen;
 import org.apache.tez.mapreduce.examples.terasort.TeraSort;
 import org.apache.tez.mapreduce.examples.terasort.TeraValidate;
+import org.apache.tez.stratosphere.examples.CustomInputOutput;
+import org.apache.tez.stratosphere.examples.WordCountStratosphereWritable;
 
 /**
  * A description of an example program based on its class and a
@@ -47,6 +49,10 @@ public class ExampleDriver {
     int exitCode = -1;
     ProgramDriver pgd = new ProgramDriver();
     try {
+      pgd.addClass("stratosphere", CustomInputOutput.class,
+          "Stratosphere input/output test.");
+      pgd.addClass("stratosphereWritable", WordCountStratosphereWritable.class,
+                "Stratosphere writable input/output test.");
       pgd.addClass("wordcount", WordCount.class,
           "A map/reduce program that counts the words in the input files.");
       pgd.addClass("mapredwordcount", MapredWordCount.class,

@@ -69,22 +69,22 @@ import java.util.TreeMap;
 
 public class CustomInputOutput extends Configured implements Tool {
   public static class TokenProcessor extends SimpleMRProcessor {
-    IntWritable one = new IntWritable(1);
-    Text word = new Text();
 
     @Override
     public void run() throws Exception {
       Preconditions.checkArgument(getInputs().size() == 1);
       Preconditions.checkArgument(getOutputs().size() == 1);
+
       MRInput input = (MRInput) getInputs().values().iterator().next();
       KeyValueReader kvReader = input.getReader();
+
       StratosphereOutputTest output = (StratosphereOutputTest) getOutputs().values().iterator().next();
-      FileBasedTupleWriter tupleWriter = (FileBasedTupleWriter) output.getWriter();
+      FileBasedTupleWriter tupleWriter = output.getWriter();
+
       while (kvReader.next()) {
         StringTokenizer itr = new StringTokenizer(kvReader.getCurrentValue().toString());
         while (itr.hasMoreTokens()) {
-          word.set(itr.nextToken());
-          tupleWriter.write(new Tuple2<String, Integer>(word.toString(), one.get()));
+          tupleWriter.write(new Tuple2<String, Integer>(itr.nextToken(), 1));
         }
       }
     }
@@ -92,12 +92,6 @@ public class CustomInputOutput extends Configured implements Tool {
   }
 
   public static class SumProcessor extends SimpleMRProcessor {
-    private static final Log LOG = LogFactory.getLog(SumProcessor.class);
-
-    @Override
-    public void initialize() throws Exception {
-        super.initialize();
-    }
 
     @Override
     public void run() throws Exception {

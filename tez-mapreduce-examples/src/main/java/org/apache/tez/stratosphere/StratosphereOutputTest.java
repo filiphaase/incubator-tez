@@ -53,7 +53,6 @@ public class StratosphereOutputTest extends AbstractLogicalOutput {
         this.conf = TezUtils.createConfFromUserPayload(getContext().getUserPayload());
         this.conf.setStrings(TezJobConfig.LOCAL_DIRS,
                 getContext().getWorkDirs());
-        //this.numPhysicalOutputs = getNumPhysicalOutputs();
 
         getContext().requestInitialMemory(0l, null); // mandatory call FROM ONFileUnorderedKVOutput
 
@@ -66,17 +65,15 @@ public class StratosphereOutputTest extends AbstractLogicalOutput {
 
         this.writer = new FileBasedTupleWriter(getContext(), conf);
         return Collections.emptyList();
-
     }
 
     @Override
     public void start() throws Exception {
         isStarted.set(true);
-        //this.writer = new FileBasedTupleWriter(outputContext, conf);
     }
 
     @Override
-    public Writer getWriter() throws Exception {
+    public FileBasedTupleWriter getWriter() throws Exception {
         Preconditions.checkState(isStarted.get(), "Cannot get writer before starting the Output");
         return this.writer;
     }
@@ -93,7 +90,7 @@ public class StratosphereOutputTest extends AbstractLogicalOutput {
         ShuffleUserPayloads.DataMovementEventPayloadProto.Builder payloadBuilder = ShuffleUserPayloads.DataMovementEventPayloadProto
                 .newBuilder();
 
-        LOG.info("Closing KVOutput: RawLength: " + this.writer.getRawLength()
+        LOG.info("Closing Stratosphere-Tuple-Output: RawLength: " + this.writer.getRawLength()
                 + ", CompressedLength: " + this.writer.getCompressedLength());
 
         if (dataViaEventsEnabled && outputGenerated && this.writer.getCompressedLength() <= dataViaEventsMaxSize) {

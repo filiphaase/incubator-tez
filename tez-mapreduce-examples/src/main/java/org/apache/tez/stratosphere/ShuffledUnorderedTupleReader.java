@@ -3,6 +3,7 @@ package org.apache.tez.stratosphere;
 import eu.stratosphere.api.common.typeutils.TypeSerializer;
 import eu.stratosphere.api.common.typeutils.base.IntSerializer;
 import eu.stratosphere.api.common.typeutils.base.StringSerializer;
+import eu.stratosphere.api.java.tuple.Tuple;
 import eu.stratosphere.api.java.tuple.Tuple2;
 import eu.stratosphere.api.java.typeutils.runtime.TupleSerializer;
 import eu.stratosphere.core.memory.DataInputView;
@@ -33,12 +34,9 @@ public class ShuffledUnorderedTupleReader<T> implements Reader{
     private static final Log LOG = LogFactory.getLog(ShuffledUnorderedTupleReader.class);
 
     private final ShuffleManager shuffleManager;
-    private final CompressionCodec codec;
 
-    private final Class<T> tupleClass;
+    private T tuple;
     private final TypeSerializer<T> tupleSerializer;
-    private final DataInputBuffer keyIn;
-    private final DataInputBuffer valIn;
 
     private final boolean ifileReadAhead;
     private final int ifileReadAheadLength;
@@ -46,39 +44,25 @@ public class ShuffledUnorderedTupleReader<T> implements Reader{
 
     private final TezCounter inputRecordCounter;
 
-    private T tuple;
-
     private FetchedInput currentFetchedInput;
-    private IFile.Reader currentReader;
+    private StratosphereIFile.Reader currentReader;
 
-    // TODO Remove this once per I/O counters are separated properly. Relying on
-    // the counter at the moment will generate aggregate numbers.
     private int numRecordsRead = 0;
 
     public ShuffledUnorderedTupleReader(ShuffleManager shuffleManager, Configuration conf,
-                                     CompressionCodec codec, boolean ifileReadAhead, int ifileReadAheadLength, int ifileBufferSize,
-                                     TezCounter inputRecordCounter)
-            throws IOException {
+                                     boolean ifileReadAhead, int ifileReadAheadLength, int ifileBufferSize,
+                                     TezCounter inputRecordCounter)  throws IOException {
         this.shuffleManager = shuffleManager;
 
-        this.codec = codec;
         this.ifileReadAhead = ifileReadAhead;
         this.ifileReadAheadLength = ifileReadAheadLength;
         this.ifileBufferSize = ifileBufferSize;
         this.inputRecordCounter = inputRecordCounter;
 
-        this.tupleClass = ConfigUtils.getIntermediateInputKeyClass(conf);
-
-        this.keyIn = new DataInputBuffer();
-        this.valIn = new DataInputBuffer();
-
-        SerializationFactory serializationFactory = new SerializationFactory(conf);
-
-        this.tupleSerializer = new TupleSerializer(Tuple2.class, new TypeSerializer[] {
+        this.tupleSerializer = (TypeSerializer<T>) new TupleSerializer(Tuple2.class, new TypeSerializer[] {
                 new StringSerializer(),
                 new IntSerializer()
         });
-        //this.valDeserializer.open(valIn);
     }
 
     // TODO NEWTEZ Maybe add an interface to check whether next will block.
@@ -125,14 +109,8 @@ public class ShuffledUnorderedTupleReader<T> implements Reader{
         if (this.currentReader == null) {
             return false;
         } else {
-            boolean hasMore = this.currentReader.nextRawKey(keyIn);
-            if (hasMore) {
-                this.currentReader.nextRawValue(valIn);
-                T reuse = tupleSerializer.createInstance();
-                this.tuple = tupleSerializer.deserialize(reuse, new InputViewHelper(valIn));
-                return true;
-            }
-            return false;
+            this.tuple = (T)this.currentReader.readElement();
+            return this.tuple != null;
         }
     }
 
@@ -163,17 +141,17 @@ public class ShuffledUnorderedTupleReader<T> implements Reader{
         }
     }
 
-    public IFile.Reader openIFileReader(FetchedInput fetchedInput)
+    public StratosphereIFile.Reader openIFileReader(FetchedInput fetchedInput)
             throws IOException {
         if (fetchedInput.getType() == FetchedInput.Type.MEMORY) {
             MemoryFetchedInput mfi = (MemoryFetchedInput) fetchedInput;
 
-            return new InMemoryReader(null, mfi.getInputAttemptIdentifier(),
-                    mfi.getBytes(), 0, (int) mfi.getActualSize());
+            return new StratosphereIFile.InMemoryReader(null, mfi.getInputAttemptIdentifier(),
+                    mfi.getBytes(), 0, (int) mfi.getActualSize(), tupleSerializer);
         } else {
-            return new IFile.Reader(fetchedInput.getInputStream(),
-                    fetchedInput.getCompressedSize(), codec, null, null, ifileReadAhead,
-                    ifileReadAheadLength, ifileBufferSize);
+            return new StratosphereIFile.Reader(fetchedInput.getInputStream(),
+                    fetchedInput.getCompressedSize(), null, null, ifileReadAhead,
+                    ifileReadAheadLength, ifileBufferSize, tupleSerializer);
         }
     }
 }

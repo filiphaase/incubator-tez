@@ -5,12 +5,10 @@ import eu.stratosphere.api.common.typeutils.base.IntSerializer;
 import eu.stratosphere.api.common.typeutils.base.StringSerializer;
 import eu.stratosphere.api.java.tuple.Tuple2;
 import eu.stratosphere.api.java.typeutils.runtime.TupleSerializer;
+import org.apache.hadoop.io.DataOutputBuffer;
 import org.apache.hadoop.io.WritableComparable;
 
-import java.io.ByteArrayOutputStream;
-import java.io.DataInput;
-import java.io.DataOutput;
-import java.io.IOException;
+import java.io.*;
 
 /**
  * Created by filip on 17.05.14.
@@ -38,7 +36,11 @@ public class TupleWritable implements WritableComparable<TupleWritable> {
 
     @Override
     public void write(DataOutput out) throws IOException {
-        OutputViewHelper outputView = new OutputViewHelper(out);
+        // for compability we need outputStream here
+        if(!(out instanceof DataOutputStream)){
+            throw new RuntimeException("out should be a DataOutputStream, other classes are not supported right now");
+        }
+        OutputViewHelper outputView = new OutputViewHelper((DataOutputStream) out);
         this.serializer.serialize(tuple, outputView);
     }
 

@@ -83,7 +83,6 @@ public class WordCountStratosphereWritable extends Configured implements Tool {
         @Override
         public void run() throws Exception {
             //LOG.fatal("In run Method");
-            LOG.info("In run method token");
             Preconditions.checkArgument(getInputs().size() == 1);
             Preconditions.checkArgument(getOutputs().size() == 1);
             MRInput input = (MRInput) getInputs().values().iterator().next();
@@ -93,7 +92,6 @@ public class WordCountStratosphereWritable extends Configured implements Tool {
             while (kvReader.next()) {
                 StringTokenizer itr = new StringTokenizer(kvReader.getCurrentValue().toString());
                 while (itr.hasMoreTokens()) {
-                    //word.set(itr.nextToken());
                     Tuple2<String, Integer> t = new Tuple2<String, Integer>(itr.nextToken(), new Integer(1));
                     kvWriter.write(new TupleWritable(t), new TupleWritable(t));
                 }
@@ -126,11 +124,6 @@ public class WordCountStratosphereWritable extends Configured implements Tool {
   private DAG createDAG(FileSystem fs, TezConfiguration tezConf,
       Map<String, LocalResource> localResources, Path stagingDir,
       String inputPath, String outputPath) throws IOException {
-
-      LOG.info("Log test info");
-      LOG.debug("Log test debug");
-      LOG.error("Log test error");
-      LOG.fatal("Log test fatal");
 
     Configuration inputConf = new Configuration(tezConf);
     inputConf.set(FileInputFormat.INPUT_DIR, inputPath);

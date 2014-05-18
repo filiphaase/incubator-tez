@@ -79,14 +79,6 @@ public class StratosphereInputTest extends AbstractLogicalInput {
         if (!isStarted.get()) {
             ////// Initial configuration
             memoryUpdateCallbackHandler.validateUpdateReceived();
-            CompressionCodec codec;
-            if (ConfigUtils.isIntermediateInputCompressed(conf)) {
-                Class<? extends CompressionCodec> codecClass = ConfigUtils
-                        .getIntermediateInputCompressorClass(conf, DefaultCodec.class);
-                codec = ReflectionUtils.newInstance(codecClass, conf);
-            } else {
-                codec = null;
-            }
 
             boolean ifileReadAhead = conf.getBoolean(TezJobConfig.TEZ_RUNTIME_IFILE_READAHEAD,
                     TezJobConfig.TEZ_RUNTIME_IFILE_READAHEAD_DEFAULT);
@@ -105,15 +97,15 @@ public class StratosphereInputTest extends AbstractLogicalInput {
                     memoryUpdateCallbackHandler.getMemoryAssigned());
 
             this.shuffleManager = new ShuffleManager(getContext(), conf, getNumPhysicalInputs(), ifileBufferSize,
-                    ifileReadAhead, ifileReadAheadLength, codec, inputManager);
+                    ifileReadAhead, ifileReadAheadLength, null, inputManager);
 
             this.inputEventHandler = new ShuffleInputEventHandlerImpl(getContext(), shuffleManager,
-                    inputManager, codec, ifileReadAhead, ifileReadAheadLength);
+                    inputManager, null, ifileReadAhead, ifileReadAheadLength);
 
             ////// End of Initial configuration
 
             this.shuffleManager.run();
-            this.tupleReader = createReader(inputRecordCounter, codec,
+            this.tupleReader = createReader(inputRecordCounter,
                     ifileBufferSize, ifileReadAhead, ifileReadAheadLength);
             List<Event> pending = new LinkedList<Event>();
             pendingEvents.drainTo(pending);
@@ -185,10 +177,10 @@ public class StratosphereInputTest extends AbstractLogicalInput {
 
 
     @SuppressWarnings("rawtypes")
-    private ShuffledUnorderedTupleReader createReader(TezCounter inputRecordCounter, CompressionCodec codec,
-                                                   int ifileBufferSize, boolean ifileReadAheadEnabled, int ifileReadAheadLength)
+    private ShuffledUnorderedTupleReader createReader(TezCounter inputRecordCounter,
+        int ifileBufferSize, boolean ifileReadAheadEnabled, int ifileReadAheadLength)
             throws IOException {
-        return new ShuffledUnorderedTupleReader(shuffleManager, conf, codec, ifileReadAheadEnabled,
+        return new ShuffledUnorderedTupleReader(shuffleManager, conf, ifileReadAheadEnabled,
                 ifileReadAheadLength, ifileBufferSize, inputRecordCounter);
     }
 

@@ -18,9 +18,8 @@
 package org.apache.tez.stratosphere.examples;
 
 import com.google.common.base.Preconditions;
+//import eu.stratosphere.api.java.io.TextInputFormat;
 import eu.stratosphere.api.java.tuple.Tuple2;
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.conf.Configured;
 import org.apache.hadoop.fs.FileSystem;
@@ -28,7 +27,7 @@ import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.IntWritable;
 import org.apache.hadoop.io.Text;
 import org.apache.hadoop.mapred.FileAlreadyExistsException;
-import org.apache.hadoop.mapreduce.lib.input.FileInputFormat;
+import org.apache.hadoop.mapred.FileInputFormat;
 import org.apache.hadoop.mapreduce.lib.input.TextInputFormat;
 import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
 import org.apache.hadoop.mapreduce.lib.output.TextOutputFormat;
@@ -50,16 +49,10 @@ import org.apache.tez.dag.api.client.DAGStatus;
 import org.apache.tez.mapreduce.committer.MROutputCommitter;
 import org.apache.tez.mapreduce.common.MRInputAMSplitGenerator;
 import org.apache.tez.mapreduce.hadoop.MRHelpers;
-import org.apache.tez.mapreduce.input.MRInput;
 import org.apache.tez.mapreduce.output.MROutput;
 import org.apache.tez.mapreduce.processor.SimpleMRProcessor;
-import org.apache.tez.runtime.library.api.KeyValueReader;
 import org.apache.tez.runtime.library.api.KeyValueWriter;
-import org.apache.tez.runtime.library.output.OnFileSortedOutput;
-import org.apache.tez.stratosphere.FileBasedTupleWriter;
-import org.apache.tez.stratosphere.ShuffledUnorderedTupleReader;
-import org.apache.tez.stratosphere.StratosphereInputTest;
-import org.apache.tez.stratosphere.StratosphereOutputTest;
+import org.apache.tez.stratosphere.*;
 
 import java.io.IOException;
 import java.util.Map;
@@ -75,14 +68,14 @@ public class CustomInputOutput extends Configured implements Tool {
       Preconditions.checkArgument(getInputs().size() == 1);
       Preconditions.checkArgument(getOutputs().size() == 1);
 
-      MRInput input = (MRInput) getInputs().values().iterator().next();
-      KeyValueReader kvReader = input.getReader();
+      StratosphereInput<String> input = (StratosphereInput<String>) getInputs().values().iterator().next();
+      StratosphereReader<String> reader = input.getReader();
 
-      StratosphereOutputTest output = (StratosphereOutputTest) getOutputs().values().iterator().next();
+      OnFileUnorderedStratosphereOutput output = (OnFileUnorderedStratosphereOutput) getOutputs().values().iterator().next();
       FileBasedTupleWriter tupleWriter = output.getWriter();
 
-      while (kvReader.next()) {
-        StringTokenizer itr = new StringTokenizer(kvReader.getCurrentValue().toString());
+      while (reader.hasNext()) {
+        StringTokenizer itr = new StringTokenizer(reader.getNext());
         while (itr.hasMoreTokens()) {
           tupleWriter.write(new Tuple2<String, Integer>(itr.nextToken(), 1));
         }
@@ -99,7 +92,7 @@ public class CustomInputOutput extends Configured implements Tool {
 
       MROutput out = (MROutput) getOutputs().values().iterator().next();
       KeyValueWriter kvWriter = out.getWriter();
-      StratosphereInputTest tupleInput = (StratosphereInputTest) getInputs().values().iterator().next();
+      ShuffledUnorderedStratosphereInput tupleInput = (ShuffledUnorderedStratosphereInput) getInputs().values().iterator().next();
       ShuffledUnorderedTupleReader tupleReader = tupleInput.getReader();
       while (tupleReader.next()) {
         Tuple2<String, Integer> curr = (Tuple2<String, Integer>)tupleReader.getCurrentTuple();
@@ -113,10 +106,10 @@ public class CustomInputOutput extends Configured implements Tool {
       String inputPath, String outputPath) throws IOException {
 
     Configuration inputConf = new Configuration(tezConf);
-    inputConf.set(FileInputFormat.INPUT_DIR, inputPath);
-    InputDescriptor id = new InputDescriptor(MRInput.class.getName())
-        .setUserPayload(MRInput.createUserPayload(inputConf,
-            TextInputFormat.class.getName(), true, true));
+    inputConf.set(org.apache.hadoop.mapreduce.lib.input.FileInputFormat.INPUT_DIR, inputPath);
+    InputDescriptor id = new InputDescriptor(StratosphereInput.class.getName())
+        .setUserPayload(StratosphereInput.createUserPayload(inputConf,
+                TextInputFormat.class.getName()));
 
     Configuration outputConf = new Configuration(tezConf);
     outputConf.set(FileOutputFormat.OUTDIR, outputPath);
@@ -147,9 +140,9 @@ public class CustomInputOutput extends Configured implements Tool {
             new Edge(tokenizerVertex, summerVertex, new EdgeProperty(
                 DataMovementType.BROADCAST, DataSourceType.PERSISTED,
                 SchedulingType.SEQUENTIAL,
-                new OutputDescriptor(StratosphereOutputTest.class.getName())
+                new OutputDescriptor(OnFileUnorderedStratosphereOutput.class.getName())
                         .setUserPayload(intermediateDataPayload),
-                new InputDescriptor(StratosphereInputTest.class.getName())
+                new InputDescriptor(ShuffledUnorderedStratosphereInput.class.getName())
                         .setUserPayload(intermediateDataPayload))));
     return dag;
   }

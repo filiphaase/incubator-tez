@@ -15,8 +15,6 @@ import org.apache.tez.common.TezUtils;
 import org.apache.tez.dag.api.TezUncheckedException;
 import org.apache.tez.runtime.api.AbstractLogicalOutput;
 import org.apache.tez.runtime.api.Event;
-import org.apache.tez.runtime.api.TezOutputContext;
-import org.apache.tez.runtime.api.Writer;
 import org.apache.tez.runtime.api.events.DataMovementEvent;
 import org.apache.tez.runtime.library.shuffle.common.ShuffleUtils;
 import org.apache.tez.runtime.library.shuffle.impl.ShuffleUserPayloads;
@@ -31,9 +29,9 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * Test class for using stratosphere serializer as output.
  * Mainly based on Tez-class OnFileUnorderedKVOutput.java
  */
-public class StratosphereOutputTest extends AbstractLogicalOutput {
+public class OnFileUnorderedStratosphereOutput extends AbstractLogicalOutput {
 
-    private static final Log LOG = LogFactory.getLog(StratosphereOutputTest.class);
+    private static final Log LOG = LogFactory.getLog(OnFileUnorderedStratosphereOutput.class);
 
     private final AtomicBoolean isStarted = new AtomicBoolean(false);
     protected Configuration conf;
@@ -45,7 +43,7 @@ public class StratosphereOutputTest extends AbstractLogicalOutput {
     private boolean dataViaEventsEnabled;
     private int dataViaEventsMaxSize;
 
-    public StratosphereOutputTest(){};
+    public OnFileUnorderedStratosphereOutput(){};
 
     @Override
     public List<Event> initialize() throws Exception {

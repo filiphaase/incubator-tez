@@ -4,16 +4,12 @@ import com.google.common.base.Preconditions;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.io.compress.CompressionCodec;
-import org.apache.hadoop.io.compress.DefaultCodec;
-import org.apache.hadoop.util.ReflectionUtils;
 import org.apache.tez.common.TezJobConfig;
 import org.apache.tez.common.TezUtils;
 import org.apache.tez.common.counters.TaskCounter;
 import org.apache.tez.common.counters.TezCounter;
 import org.apache.tez.runtime.api.AbstractLogicalInput;
 import org.apache.tez.runtime.api.Event;
-import org.apache.tez.runtime.library.common.ConfigUtils;
 import org.apache.tez.runtime.library.common.MemoryUpdateCallbackHandler;
 import org.apache.tez.runtime.library.shuffle.common.ShuffleEventHandler;
 import org.apache.tez.runtime.library.shuffle.common.impl.ShuffleInputEventHandlerImpl;
@@ -31,8 +27,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 /**
  * Created by filip on 14.05.14.
  */
-public class StratosphereInputTest extends AbstractLogicalInput {
-    private static final Log LOG = LogFactory.getLog(StratosphereInputTest.class);
+public class ShuffledUnorderedStratosphereInput extends AbstractLogicalInput {
+    private static final Log LOG = LogFactory.getLog(ShuffledUnorderedStratosphereInput.class);
 
     private Configuration conf;
     private ShuffleManager shuffleManager;
@@ -48,7 +44,7 @@ public class StratosphereInputTest extends AbstractLogicalInput {
     private SimpleFetchedInputAllocator inputManager;
     private ShuffleEventHandler inputEventHandler;
 
-    public StratosphereInputTest() {}
+    public ShuffledUnorderedStratosphereInput() {}
 
     @Override
     public synchronized List<Event> initialize() throws Exception {

@@ -92,8 +92,8 @@ public class StratosphereInput<T> extends AbstractLogicalInput {
         inputConf.set(MRJobConfig.INPUT_FORMAT_CLASS_ATTR,
                 inputFormatClassName);
         MultiStageMRConfToTezTranslator.translateVertexConfToTez(inputConf, null);
-        MRHelpers.doJobClientMagic(inputConf);
-        return MRHelpers.createMRInputPayload(inputConf, null);
+        StratosphereHelpers.doJobClientMagic(inputConf);
+        return StratosphereHelpers.createMRInputPayload(inputConf);
     }
 
     @Override
@@ -101,11 +101,10 @@ public class StratosphereInput<T> extends AbstractLogicalInput {
         getContext().requestInitialMemory(0l, null); //mandatory call
         getContext().inputIsReady();
         MRRuntimeProtos.MRInputUserPayloadProto mrUserPayload =
-                MRHelpers.parseMRInputPayload(getContext().getUserPayload());
+                StratosphereHelpers.parseMRInputPayload(getContext().getUserPayload());
         Preconditions.checkArgument(mrUserPayload.hasSplits() == false,
-                "Split information not expected in MRInput");
-        Configuration conf =
-                MRHelpers.createConfFromByteString(mrUserPayload.getConfigurationBytes());
+                "Split information not expected in StratosphereInput");
+        Configuration conf = StratosphereHelpers.createConfFromByteString(mrUserPayload.getConfigurationBytes());
         this.jobConf = new JobConf(conf);
         // Add tokens to the jobConf - in case they are accessed within the RR / IF
         jobConf.getCredentials().mergeAll(UserGroupInformation.getCurrentUser().getCredentials());
@@ -161,10 +160,8 @@ public class StratosphereInput<T> extends AbstractLogicalInput {
     }
 
     private void setupInputFormat() throws IOException {
-        // TODO
-        LOG.info("setupInputFormat for stratosphere with path: " + this.jobConf.get(FileInputFormat.INPUT_DIR));
         this.inputFormat = new TextInputFormat(new eu.stratosphere.core.fs.Path(
-                this.jobConf.get(FileInputFormat.INPUT_DIR)));
+                this.jobConf.get(StratosphereHelpers.CONF_INPUT_FILE)));
         this.inputFormat.configure(new eu.stratosphere.configuration.Configuration());
         this.serializer = (TypeSerializer<T>)new StringSerializer();
     }

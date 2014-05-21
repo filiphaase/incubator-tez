@@ -19,6 +19,7 @@ package org.apache.tez.stratosphere.examples;
 
 import com.google.common.base.Preconditions;
 import eu.stratosphere.api.java.io.TextInputFormat;
+import eu.stratosphere.api.java.io.TextOutputFormat;
 import eu.stratosphere.api.java.tuple.Tuple2;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
@@ -26,11 +27,7 @@ import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.conf.Configured;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
-import org.apache.hadoop.io.IntWritable;
-import org.apache.hadoop.io.Text;
 import org.apache.hadoop.mapred.FileAlreadyExistsException;
-import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
-import org.apache.hadoop.mapreduce.lib.output.TextOutputFormat;
 import org.apache.hadoop.mapreduce.security.TokenCache;
 import org.apache.hadoop.security.Credentials;
 import org.apache.hadoop.security.UserGroupInformation;
@@ -46,12 +43,8 @@ import org.apache.tez.dag.api.EdgeProperty.DataSourceType;
 import org.apache.tez.dag.api.EdgeProperty.SchedulingType;
 import org.apache.tez.dag.api.client.DAGClient;
 import org.apache.tez.dag.api.client.DAGStatus;
-import org.apache.tez.mapreduce.committer.MROutputCommitter;
-import org.apache.tez.mapreduce.common.MRInputAMSplitGenerator;
 import org.apache.tez.mapreduce.hadoop.MRHelpers;
-import org.apache.tez.mapreduce.output.MROutput;
 import org.apache.tez.mapreduce.processor.SimpleMRProcessor;
-import org.apache.tez.runtime.library.api.KeyValueWriter;
 import org.apache.tez.stratosphere.*;
 
 import java.io.IOException;
@@ -104,7 +97,7 @@ public class CustomInputOutput extends Configured implements Tool {
       StratosphereReader<Tuple2<String,Integer>> tupleReader = tupleInput.getReader();
 
       while (tupleReader.hasNext()) {
-        Tuple2<String, Integer> curr = (Tuple2<String, Integer>)tupleReader.getNext();
+        Tuple2<String, Integer> curr = tupleReader.getNext();
         writer.write("Stratosphere " + curr.f0);
       }
     }
@@ -115,32 +108,28 @@ public class CustomInputOutput extends Configured implements Tool {
       String inputPath, String outputPath) throws IOException {
 
     Configuration inputConf = new Configuration(tezConf);
-    inputConf.set(org.apache.hadoop.mapreduce.lib.input.FileInputFormat.INPUT_DIR, inputPath);
+    inputConf.set(StratosphereHelpers.CONF_INPUT_FILE, inputPath);
     InputDescriptor id = new InputDescriptor(StratosphereInput.class.getName())
         .setUserPayload(StratosphereInput.createUserPayload(inputConf,
                 TextInputFormat.class.getName()));
 
     Configuration outputConf = new Configuration(tezConf);
-    outputConf.set(FileOutputFormat.OUTDIR, outputPath);
+    outputConf.set(StratosphereHelpers.CONF_OUTPUT_FILE, outputPath);
     OutputDescriptor od = new OutputDescriptor(StratosphereOutput.class.getName())
-      .setUserPayload(MROutput.createUserPayload(
-          outputConf, TextOutputFormat.class.getName(), true));
+      .setUserPayload(StratosphereOutput.createUserPayload(
+          outputConf, TextOutputFormat.class.getName()));
     
     byte[] intermediateDataPayload = 
-        MRHelpers.createMRIntermediateDataPayload(tezConf, Tuple2.class.getName(),
-            Tuple2.class.getName(), true, null, null);
+        StratosphereHelpers.createMRIntermediateDataPayload(tezConf, Tuple2.class.getName());
     
     Vertex tokenizerVertex = new Vertex("tokenizer", new ProcessorDescriptor(
-        TokenProcessor.class.getName()), -1, MRHelpers.getMapResource(tezConf));
-    tokenizerVertex.setJavaOpts(MRHelpers.getMapJavaOpts(tezConf));
+        TokenProcessor.class.getName()), -1, StratosphereHelpers.getResource(tezConf));
     tokenizerVertex.addInput("StratosphereInput", id, StratosphereInputAMSplitGenerator.class);
 
     Vertex summerVertex = new Vertex("summer",
         new ProcessorDescriptor(
-            SumProcessor.class.getName()), 1, MRHelpers.getReduceResource(tezConf));
-    summerVertex.setJavaOpts(
-        MRHelpers.getReduceJavaOpts(tezConf));
-    summerVertex.addOutput("StratosphereOutput", od, StratosphereOutputCommiter.class);
+            SumProcessor.class.getName()), 1, StratosphereHelpers.getResource(tezConf));
+    summerVertex.addOutput("StratosphereOutput", od, null);
     
     DAG dag = new DAG("StratosphereCustomInputOutput");
     dag.addVertex(tokenizerVertex)

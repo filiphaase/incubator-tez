@@ -10,5 +10,4 @@ public interface StratosphereReader<T> extends Reader {
     public boolean hasNext() throws Exception;
 
     public T getNext() throws Exception;
-
 }

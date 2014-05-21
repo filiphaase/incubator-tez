@@ -1,16 +1,32 @@
 package org.apache.tez.stratosphere;
 
+import com.google.common.base.Preconditions;
+import com.google.protobuf.ByteString;
 import eu.stratosphere.api.java.io.TextInputFormat;
 import eu.stratosphere.configuration.Configuration;
 import eu.stratosphere.core.fs.*;
+import eu.stratosphere.core.fs.FileSystem;
+import eu.stratosphere.core.fs.Path;
 import eu.stratosphere.core.io.InputSplit;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.classification.InterfaceAudience;
+import org.apache.hadoop.fs.*;
+import org.apache.hadoop.mapred.JobConf;
 import org.apache.hadoop.mapreduce.JobContext;
 import org.apache.hadoop.mapreduce.lib.input.FileInputFormat;
+import org.apache.hadoop.yarn.api.records.Resource;
+import org.apache.tez.common.TezJobConfig;
+import org.apache.tez.common.TezUtils;
+import org.apache.tez.mapreduce.combine.MRCombiner;
+import org.apache.tez.mapreduce.hadoop.MRJobConfig;
+import org.apache.tez.mapreduce.hadoop.MultiStageMRConfToTezTranslator;
+import org.apache.tez.mapreduce.partition.MRPartitioner;
+import org.apache.tez.mapreduce.protos.MRRuntimeProtos;
 
+import javax.annotation.Nullable;
 import java.io.IOException;
+import java.net.InetAddress;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -22,6 +38,8 @@ public class StratosphereHelpers {
 
     private static final Log LOG = LogFactory.getLog(StratosphereHelpers.class);
 
+    public static String CONF_INPUT_FILE = "stratosphere.input.file.path";
+    public static String CONF_OUTPUT_FILE = "stratosphere.output.file.path";
 
     //  From stratosphere AbstractFileInput
     @SuppressWarnings({ "rawtypes", "unchecked" })
@@ -31,133 +49,126 @@ public class StratosphereHelpers {
             throws ClassNotFoundException, IOException,
             InterruptedException {
 
-        final String pathURI = "hdfs://" + jobContext.getConfiguration().get(FileInputFormat.INPUT_DIR);
-        System.out.println("PathURI: " + pathURI);
-        LOG.info("PathURI LOG: " + pathURI);
+        final String pathURI = jobContext.getConfiguration().get(StratosphereHelpers.CONF_INPUT_FILE);
         TextInputFormat inputFormat = new TextInputFormat(new Path(pathURI));
         inputFormat.configure(new Configuration());
         return inputFormat.createInputSplits(1);
-        /*if (pathURI == null) {
-            throw new IOException("The path to the file was not found in the runtime configuration.");
-        }
-
-        final Path path;
-        try {
-            path = new Path(pathURI);
-        } catch (Exception iaex) {
-            throw new IOException("Invalid file path specifier: ", iaex);
-        }
-
-        final List<FileInputSplit> inputSplits = new ArrayList<FileInputSplit>();
-
-        // get all the files that are involved in the splits
-        final List<FileStatus> files = new ArrayList<FileStatus>();
-        long totalLength = 0;
-
-        final FileSystem fs = path.getFileSystem();
-        LOG.info("Using Filesystem: " + fs);
-        final FileStatus pathFile = fs.getFileStatus(path);
-
-        if (pathFile.isDir()) {
-            // input is directory. list all contained files
-            final FileStatus[] dir = fs.listStatus(path);
-            for (int i = 0; i < dir.length; i++) {
-                if (!dir[i].isDir()) {
-                    files.add(dir[i]);
-                    totalLength += dir[i].getLen();
-                }
-            }
-
-        } else {
-            files.add(pathFile);
-            totalLength += pathFile.getLen();
-        }
-
-        final long minSplitSize = 1;
-        final long maxSplitSize = (numTasks < 1) ? Long.MAX_VALUE : (totalLength / numTasks +
-                (totalLength % numTasks == 0 ? 0 : 1));
-
-        // now that we have the files, generate the splits
-        int splitNum = 0;
-        for (final FileStatus file : files) {
-
-            final long len = file.getLen();
-            final long blockSize = file.getBlockSize();
-
-            final long splitSize = Math.max(minSplitSize, Math.min(maxSplitSize, blockSize));
-            final long halfSplit = splitSize >>> 1;
-
-            final long maxBytesForLastSplit = (long) (splitSize * MAX_SPLIT_SIZE_DISCREPANCY);
-
-            if (len > 0) {
-
-                // get the block locations and make sure they are in order with respect to their offset
-                final BlockLocation[] blocks = fs.getFileBlockLocations(file, 0, len);
-                Arrays.sort(blocks);
-
-                long bytesUnassigned = len;
-                long position = 0;
-
-                int blockIndex = 0;
-
-                while (bytesUnassigned > maxBytesForLastSplit) {
-                    // get the block containing the majority of the data
-                    blockIndex = getBlockIndexForPosition(blocks, position, halfSplit, blockIndex);
-                    // create a new split
-                    final FileInputSplit fis = new FileInputSplit(splitNum++, file.getPath(), position, splitSize,
-                            blocks[blockIndex]
-                                    .getHosts());
-                    inputSplits.add(fis);
-
-                    // adjust the positions
-                    position += splitSize;
-                    bytesUnassigned -= splitSize;
-                }
-
-                // assign the last split
-                if (bytesUnassigned > 0) {
-                    blockIndex = getBlockIndexForPosition(blocks, position, halfSplit, blockIndex);
-                    final FileInputSplit fis = new FileInputSplit(splitNum++, file.getPath(), position,
-                            bytesUnassigned,
-                            blocks[blockIndex].getHosts());
-                    inputSplits.add(fis);
-                }
-            } else {
-                // special case with a file of zero bytes size
-                final BlockLocation[] blocks = fs.getFileBlockLocations(file, 0, 0);
-                String[] hosts;
-                if (blocks.length > 0) {
-                    hosts = blocks[0].getHosts();
-                } else {
-                    hosts = new String[0];
-                }
-                final FileInputSplit fis = new FileInputSplit(splitNum++, file.getPath(), 0, 0, hosts);
-                inputSplits.add(fis);
-            }
-        }
-
-        return inputSplits.toArray(new FileInputSplit[inputSplits.size()]);*/
     }
 
-    //  From stratosphere AbstractFileInput
-    private static final int getBlockIndexForPosition(final BlockLocation[] blocks, final long offset,
-                                               final long halfSplitSize, final int startIndex) {
+    /**
+     * Sets up parameters which used to be set by the MR JobClient. Includes
+     * setting whether to use the new api or the old api. Note: Must be called
+     * before generating InputSplits
+     *
+     * @param conf
+     *          configuration for the vertex.
+     */
+    public static void doJobClientMagic(org.apache.hadoop.conf.Configuration conf) throws IOException {
+        // TODO Maybe add functionality to check output specifications - e.g. fail
+        // early if the output directory exists.
+        InetAddress ip = InetAddress.getLocalHost();
+        if (ip != null) {
+            String submitHostAddress = ip.getHostAddress();
+            String submitHostName = ip.getHostName();
+            conf.set(MRJobConfig.JOB_SUBMITHOST, submitHostName);
+            conf.set(MRJobConfig.JOB_SUBMITHOSTADDR, submitHostAddress);
+        }
 
-        // go over all indexes after the startIndex
-        for (int i = startIndex; i < blocks.length; i++) {
-            long blockStart = blocks[i].getOffset();
-            long blockEnd = blockStart + blocks[i].getLength();
+        // TODO eventually ACLs
+        conf.set(TezJobConfig.TEZ_RUNTIME_PARTITIONER_CLASS, MRPartitioner.class.getName());
 
-            if (offset >= blockStart && offset < blockEnd) {
-                // got the block where the split starts
-                // check if the next block contains more than this one does
-                if (i < blocks.length - 1 && blockEnd - offset < halfSplitSize) {
-                    return i + 1;
-                } else {
-                    return i;
-                }
+        // TODO Set Combiner
+        //conf.set(TezJobConfig.TEZ_RUNTIME_COMBINER_CLASS, MRCombiner.class.getName());
+
+        setWorkingDirectory(conf);
+    }
+
+    private static void setWorkingDirectory(org.apache.hadoop.conf.Configuration conf) {
+        String name = conf.get(JobContext.WORKING_DIR);
+        if (name == null) {
+            try {
+                org.apache.hadoop.fs.Path dir = org.apache.hadoop.fs.FileSystem.get(conf).getWorkingDirectory();
+                conf.set(JobContext.WORKING_DIR, dir.toString());
+            } catch (IOException e) {
+                throw new RuntimeException(e);
             }
         }
-        throw new IllegalArgumentException("The given offset is not contained in the any block.");
     }
+
+    public static byte[] createMRInputPayload(org.apache.hadoop.conf.Configuration conf) throws IOException {
+        Preconditions.checkArgument(conf != null, "Configuration must be specified");
+        MRRuntimeProtos.MRInputUserPayloadProto.Builder userPayloadBuilder = MRRuntimeProtos.MRInputUserPayloadProto
+                .newBuilder();
+        userPayloadBuilder.setConfigurationBytes(createByteStringFromConf(conf));
+        return userPayloadBuilder.build().toByteArray();
+    }
+
+    @InterfaceAudience.LimitedPrivate("Hive, Pig")
+    public static ByteString createByteStringFromConf(org.apache.hadoop.conf.Configuration conf)
+            throws IOException {
+        return TezUtils.createByteStringFromConf(conf);
+    }
+
+    @InterfaceAudience.LimitedPrivate("Hive, Pig")
+    public static org.apache.hadoop.conf.Configuration createConfFromByteString(ByteString bs)
+            throws IOException {
+        return TezUtils.createConfFromByteString(bs);
+    }
+
+    public static MRRuntimeProtos.MRInputUserPayloadProto parseMRInputPayload(byte[] bytes)
+            throws IOException {
+        return MRRuntimeProtos.MRInputUserPayloadProto.parseFrom(bytes);
+    }
+
+    /**
+     * Create the user payload to be set on intermediate edge Input/Output classes
+     * that use MapReduce Key-Value data types. If the input and output have
+     * different configurations then this method may be called separately for both
+     * to get different payloads. If the input and output have no special
+     * configuration then this method may be called once to get the common payload
+     * for both input and output.
+     *
+     * @param conf
+     *          Configuration for the class
+     * @param className
+     *          Class name of the elements
+     * Could @param keyComparator add here
+     *          Optional key comparator class name
+     * @return
+     * @throws IOException
+     */
+    public static byte[] createMRIntermediateDataPayload(org.apache.hadoop.conf.Configuration conf,
+                                                         String className) throws IOException {
+        Preconditions.checkNotNull(conf);
+        Preconditions.checkNotNull(className);
+        org.apache.hadoop.conf.Configuration intermediateDataConf = new JobConf(conf);
+        intermediateDataConf.set(StratosphereJobConfig.OUTPUT_CLASS, className);
+
+        MultiStageMRConfToTezTranslator.translateVertexConfToTez(
+                intermediateDataConf, intermediateDataConf);
+        StratosphereHelpers.doJobClientMagic(intermediateDataConf);
+
+        return TezUtils.createUserPayloadFromConf(intermediateDataConf);
+    }
+
+    /**
+     * Extract the map task's container resource requirements from the
+     * provided configuration.
+     *
+     * Uses values from the provided configuration.
+     *
+     * @param conf Configuration with MR specific settings used to extract
+     * information from
+     *
+     * @return Resource object used to define requirements for containers
+     * running Map tasks
+     */
+    public static Resource getResource(org.apache.hadoop.conf.Configuration conf) {
+        return Resource.newInstance(conf.getInt(
+                        StratosphereJobConfig.PROCESSOR_MEMORY_MB, StratosphereJobConfig.DEFAULT_PROCESSOR_MEMORY_MB),
+                conf.getInt(StratosphereJobConfig.PROCESSOR_CPU_VCORES,
+                        StratosphereJobConfig.DEFAULT_PROCESSOR_CPU_VCORES));
+    }
+
+
 }

@@ -45,18 +45,16 @@ public class StratosphereOutput<T> extends AbstractLogicalOutput {
      * Creates the user payload to be set on the OutputDescriptor for MROutput
      * @param conf Configuration for the OutputFormat
      * @param outputFormatName Name of the class of the OutputFormat
-     * @param useNewApi Use new mapreduce API or old mapred API
      * @return
      * @throws java.io.IOException
      */
     public static byte[] createUserPayload(Configuration conf,
-                                           String outputFormatName, boolean useNewApi) throws IOException {
+                                           String outputFormatName) throws IOException {
         Configuration outputConf = new JobConf(conf);
         outputConf.set(MRJobConfig.OUTPUT_FORMAT_CLASS_ATTR, outputFormatName);
-        outputConf.setBoolean("mapred.mapper.new-api", useNewApi);
         MultiStageMRConfToTezTranslator.translateVertexConfToTez(outputConf,
                 null);
-        MRHelpers.doJobClientMagic(outputConf);
+        StratosphereHelpers.doJobClientMagic(outputConf);
         return TezUtils.createUserPayloadFromConf(outputConf);
     }
 
@@ -87,9 +85,9 @@ public class StratosphereOutput<T> extends AbstractLogicalOutput {
 
         outputRecordCounter = getContext().getCounters().findCounter(TaskCounter.OUTPUT_RECORDS);
 
-        outputFormat = new TextOutputFormat(new eu.stratosphere.core.fs.Path(jobConf.get(org.apache.hadoop.mapreduce.lib.output.FileOutputFormat.OUTDIR)));
+        outputFormat = new TextOutputFormat(new eu.stratosphere.core.fs.Path(jobConf.get(StratosphereHelpers.CONF_OUTPUT_FILE)));
         outputFormat.configure(new eu.stratosphere.configuration.Configuration());
-        outputFormat.open(1,1); // TODO
+        outputFormat.open(1,1); // TODO figure out how numTasks and Stuff should be set
 
         LOG.info("Initialized Simple Output"
                 + ", using_new_api: " + useNewApi);

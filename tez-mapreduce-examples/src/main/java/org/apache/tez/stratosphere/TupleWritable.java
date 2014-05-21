@@ -47,7 +47,10 @@ public class TupleWritable implements WritableComparable<TupleWritable> {
     @Override
     public void readFields(DataInput in) throws IOException {
         this.tuple = serializer.createInstance();
-        this.serializer.deserialize(tuple, new InputViewHelper(in));
+        if(! (in instanceof DataInputStream)){
+            throw new RuntimeException("in: " + in + " should be DataInputStream, other DataInputs are not implemented currently");
+        }
+        this.serializer.deserialize(tuple, new InputViewHelper((DataInputStream)in));
     }
 
     @Override

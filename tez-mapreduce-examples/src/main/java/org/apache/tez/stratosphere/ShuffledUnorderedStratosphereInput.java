@@ -27,7 +27,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 /**
  * Created by filip on 14.05.14.
  */
-public class ShuffledUnorderedStratosphereInput extends AbstractLogicalInput {
+public class ShuffledUnorderedStratosphereInput<T> extends AbstractLogicalInput {
     private static final Log LOG = LogFactory.getLog(ShuffledUnorderedStratosphereInput.class);
 
     private Configuration conf;
@@ -114,7 +114,7 @@ public class ShuffledUnorderedStratosphereInput extends AbstractLogicalInput {
         }
     }
 
-    public synchronized ShuffledUnorderedTupleReader getReader() throws Exception {
+    public synchronized StratosphereReader<T> getReader() throws Exception {
         Preconditions.checkState(isStarted.get(), "Must start input before invoking this method");
         if (getNumPhysicalInputs() == 0) {
         /*    return new KeyValueReader() {
@@ -173,10 +173,10 @@ public class ShuffledUnorderedStratosphereInput extends AbstractLogicalInput {
 
 
     @SuppressWarnings("rawtypes")
-    private ShuffledUnorderedTupleReader createReader(TezCounter inputRecordCounter,
+    private ShuffledUnorderedTupleReader<T> createReader(TezCounter inputRecordCounter,
         int ifileBufferSize, boolean ifileReadAheadEnabled, int ifileReadAheadLength)
             throws IOException {
-        return new ShuffledUnorderedTupleReader(shuffleManager, conf, ifileReadAheadEnabled,
+        return new ShuffledUnorderedTupleReader<T>(shuffleManager, conf, ifileReadAheadEnabled,
                 ifileReadAheadLength, ifileBufferSize, inputRecordCounter);
     }
 

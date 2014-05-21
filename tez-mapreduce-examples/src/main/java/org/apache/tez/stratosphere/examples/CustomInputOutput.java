@@ -35,7 +35,6 @@ import org.apache.hadoop.util.GenericOptionsParser;
 import org.apache.hadoop.util.Tool;
 import org.apache.hadoop.util.ToolRunner;
 import org.apache.hadoop.yarn.api.records.ApplicationId;
-import org.apache.hadoop.yarn.api.records.LocalResource;
 import org.apache.tez.client.*;
 import org.apache.tez.dag.api.*;
 import org.apache.tez.dag.api.EdgeProperty.DataMovementType;
@@ -43,18 +42,15 @@ import org.apache.tez.dag.api.EdgeProperty.DataSourceType;
 import org.apache.tez.dag.api.EdgeProperty.SchedulingType;
 import org.apache.tez.dag.api.client.DAGClient;
 import org.apache.tez.dag.api.client.DAGStatus;
-import org.apache.tez.mapreduce.hadoop.MRHelpers;
-import org.apache.tez.mapreduce.processor.SimpleMRProcessor;
+import org.apache.tez.runtime.library.processor.SimpleProcessor;
 import org.apache.tez.stratosphere.*;
 
 import java.io.IOException;
-import java.util.Map;
 import java.util.StringTokenizer;
-import java.util.TreeMap;
 
 
 public class CustomInputOutput extends Configured implements Tool {
-  public static class TokenProcessor extends SimpleMRProcessor {
+  public static class TokenProcessor extends SimpleProcessor {
 
     private static final Log LOG = LogFactory.getLog(TokenProcessor.class);
 
@@ -82,7 +78,7 @@ public class CustomInputOutput extends Configured implements Tool {
 
   }
 
-  public static class SumProcessor extends SimpleMRProcessor {
+  public static class SumProcessor extends SimpleProcessor {
 
     private static final Log LOG = LogFactory.getLog(SumProcessor.class);
 
@@ -103,8 +99,7 @@ public class CustomInputOutput extends Configured implements Tool {
     }
   }
 
-  private DAG createDAG(FileSystem fs, TezConfiguration tezConf,
-      Map<String, LocalResource> localResources, Path stagingDir,
+  private DAG createDAG(TezConfiguration tezConf,
       String inputPath, String outputPath) throws IOException {
 
     Configuration inputConf = new Configuration(tezConf);
@@ -181,7 +176,7 @@ public class CustomInputOutput extends Configured implements Tool {
     TezClientUtils.ensureStagingDirExists(tezConf, stagingDir);
 
     tezConf.set(TezConfiguration.TEZ_AM_JAVA_OPTS,
-        MRHelpers.getMRAMJavaOpts(tezConf));
+        StratosphereHelpers.getMRAMJavaOpts(tezConf));
 
     // No need to add jar containing this class as assumed to be part of
     // the tez jars.
@@ -195,7 +190,7 @@ public class CustomInputOutput extends Configured implements Tool {
     
     TezSessionConfiguration sessionConfig =
         new TezSessionConfiguration(amConfig, tezConf);
-    tezSession = new TezSession("WordCountSession", appId,
+    tezSession = new TezSession("StratosphereCustomInputOutput", appId,
         sessionConfig);
     tezSession.start();
 
@@ -207,11 +202,7 @@ public class CustomInputOutput extends Configured implements Tool {
               + outputPath + " already exists");
         }
         
-        Map<String, LocalResource> localResources =
-          new TreeMap<String, LocalResource>();
-        
-        DAG dag = createDAG(fs, tezConf, localResources,
-            stagingDir, inputPath, outputPath);
+        DAG dag = createDAG(tezConf, inputPath, outputPath);
 
         tezSession.waitTillReady();
         dagClient = tezSession.submitDAG(dag);

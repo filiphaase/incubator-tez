@@ -78,11 +78,8 @@ public class FileBasedTupleWriter<T> implements StratosphereWriter<T>{
                 new IntSerializer()
         });
 
-        // Set key, and value classes (param 4,5) to null let the Writer not initialize a serializer
-        this.writer = new StratosphereIFile.Writer(conf, rfs, outputPath,
+        this.writer = new StratosphereIFile.Writer<T>(conf, rfs, outputPath,
                 Tuple2.class, null, outputBytesCounter, serializer);
-
-
     }
 
     public void write(T input) throws IOException{

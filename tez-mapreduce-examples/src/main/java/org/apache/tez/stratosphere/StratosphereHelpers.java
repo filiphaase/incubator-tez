@@ -170,5 +170,22 @@ public class StratosphereHelpers {
                         StratosphereJobConfig.DEFAULT_PROCESSOR_CPU_VCORES));
     }
 
+    /**
+     * Extract Java Opts for the AM based on MR-based configuration
+     * @param conf Configuration from which to extract information
+     * @return Java opts for the AM
+     */
+    public static String getMRAMJavaOpts(org.apache.hadoop.conf.Configuration conf) {
+        // Admin opts
+        String mrAppMasterAdminOptions = conf.get(
+                StratosphereJobConfig.AM_ADMIN_COMMAND_OPTS,
+                StratosphereJobConfig.DEFAULT_AM_ADMIN_COMMAND_OPTS);
+        // Add AM user command opts
+        String mrAppMasterUserOptions = conf.get(StratosphereJobConfig.AM_COMMAND_OPTS,
+                StratosphereJobConfig.DEFAULT_AM_COMMAND_OPTS);
+
+        return mrAppMasterAdminOptions.trim()
+                + " " + mrAppMasterUserOptions.trim();
+    }
 
 }

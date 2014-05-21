@@ -33,7 +33,7 @@ public class StratosphereIFile {
         @InterfaceAudience.Private
         @InterfaceStability.Unstable
         @SuppressWarnings({"unchecked", "rawtypes"})
-        public static class Writer {
+        public static class Writer<T> {
             FSDataOutputStream out;
             boolean ownOutputStream = false;
             long start = 0;
@@ -51,25 +51,20 @@ public class StratosphereIFile {
             IFileOutputStream checksumOut;
 
             Class clazz;
-            TypeSerializer serializer;
+            TypeSerializer<T> serializer;
 
             DataOutputBuffer buffer = new DataOutputBuffer();
 
             public Writer(Configuration conf, FileSystem fs, Path file,
                           Class clazz, TezCounter writesCounter,
-                          TezCounter serializedBytesCounter, TypeSerializer serializer) throws IOException {
+                          TezCounter serializedBytesCounter, TypeSerializer<T> serializer) throws IOException {
                 this(conf, fs.create(file), clazz,writesCounter, serializedBytesCounter, serializer);
                 ownOutputStream = true;
             }
 
-            protected Writer(TezCounter writesCounter, TezCounter serializedBytesCounter) {
-                writtenRecordsCounter = writesCounter;
-                serializedBytes = serializedBytesCounter;
-            }
-
             public Writer(Configuration conf, FSDataOutputStream out,
                           Class clazz, TezCounter writesCounter, TezCounter serializedBytesCounter,
-                          TypeSerializer serializer)
+                          TypeSerializer<T> serializer)
                     throws IOException {
                 this.writtenRecordsCounter = writesCounter;
                 this.serializedBytes = serializedBytesCounter;
@@ -81,11 +76,6 @@ public class StratosphereIFile {
                 this.clazz = clazz;
                 this.serializer = serializer;
             }
-
-            /*public Writer(Configuration conf, FileSystem fs, Path file)
-                    throws IOException {
-                this(conf, fs, file, null, null, null);
-            }*/
 
             public void close() throws IOException {
                 if (closed.getAndSet(true)) {
@@ -116,14 +106,13 @@ public class StratosphereIFile {
                 }
             }
 
-            public void append(Object element) throws IOException {
+            public void append(T element) throws IOException {
                 if (element.getClass() != clazz)
                     throw new IOException("wrong key class: "+ element.getClass()
                             +" is not "+ clazz);
 
                 OutputViewHelper outputView = new OutputViewHelper(buffer);
-
-                // Append the 'key'
+                // Append the element
                 serializer.serialize(element, outputView);
                 int elementLength = buffer.getLength();
                 if (elementLength < 0) {
@@ -132,8 +121,8 @@ public class StratosphereIFile {
                 }
 
                 // Write the record out
-                WritableUtils.writeVInt(out, elementLength);                  // key length
-                out.write(buffer.getData(),- 0, buffer.getLength());       // data
+                WritableUtils.writeVInt(out, elementLength);
+                out.write(buffer.getData(),- 0, buffer.getLength());
                 // Update bytes written
                 decompressedBytesWritten += elementLength +
                         WritableUtils.getVIntSize(elementLength);
@@ -145,7 +134,15 @@ public class StratosphereIFile {
                 ++numRecordsWritten;
             }
 
-            public void append(DataInputBuffer element)
+            public long getRawLength() {
+                return decompressedBytesWritten;
+            }
+
+            public long getCompressedLength() {
+                return compressedBytesWritten;
+            }
+
+/*            public void append(DataInputBuffer element)
                     throws IOException {
                 int elementLength = element.getLength() - element.getPosition();
                 if (elementLength < 0) {
@@ -174,15 +171,7 @@ public class StratosphereIFile {
             public void updateCountersForExternalAppend(long length) {
                 ++numRecordsWritten;
                 decompressedBytesWritten += length;
-            }
-
-            public long getRawLength() {
-                return decompressedBytesWritten;
-            }
-
-            public long getCompressedLength() {
-                return compressedBytesWritten;
-            }
+            }*/
         }
 
         /**
@@ -190,7 +179,7 @@ public class StratosphereIFile {
          */
         @InterfaceAudience.Private
         @InterfaceStability.Unstable
-        public static class Reader {
+        public static class Reader<T> {
 
             private static final int DEFAULT_BUFFER_SIZE = 128*1024;
 
@@ -214,25 +203,8 @@ public class StratosphereIFile {
             byte elementBytes[] = new byte[0];
 
             long startPos;
-            TypeSerializer serializer;
+            TypeSerializer<T> serializer;
             protected DataInputBuffer elementBuffer = new DataInputBuffer();
-
-            /**
-             * Construct an IFile Reader.
-             *
-             * @param fs  FileSystem
-             * @param file Path of the file to be opened. This file should have
-             *             checksum bytes for the data at the end of the file.
-             * @param readsCounter Counter for records read from disk
-             * @throws IOException
-             */
-            public Reader(FileSystem fs, Path file,
-                          TezCounter readsCounter, TezCounter bytesReadCounter, boolean ifileReadAhead,
-                          int ifileReadAheadLength, int bufferSize, TypeSerializer serializer) throws IOException {
-                this(fs.open(file),
-                        fs.getFileStatus(file).getLen(),
-                        readsCounter, bytesReadCounter, ifileReadAhead, ifileReadAheadLength, bufferSize, serializer);
-            }
 
             /**
              * Construct an IFile Reader.
@@ -263,10 +235,6 @@ public class StratosphereIFile {
 
             public long getLength() {
                 return fileLength - checksumIn.getSize();
-            }
-
-            public long getPosition() throws IOException {
-                return checksumIn.getPosition();
             }
 
             /**
@@ -315,7 +283,7 @@ public class StratosphereIFile {
                 return true;
             }
 
-            public Object readElement() throws IOException {
+            public T readElement() throws IOException {
                 if (!positionToNextRecord(dataIn)) {
                     if (LOG.isDebugEnabled()) {
                         LOG.debug("currentElementLength=" + currentElementLength +
@@ -334,7 +302,7 @@ public class StratosphereIFile {
                 elementBuffer.reset(elementBytes, currentElementLength);
                 bytesRead += currentElementLength;
 
-                Object reuse = serializer.createInstance();
+                T reuse = serializer.createInstance();
                 reuse = serializer.deserialize(reuse, new InputViewHelper(elementBuffer));
                 return reuse;
             }
@@ -358,23 +326,18 @@ public class StratosphereIFile {
             public void reset(int offset) {
                 return;
             }
-
-/*            public void disableChecksumValidation() {
-                checksumIn.disableChecksumValidation();
-            }*/
         }
 
-        public static class InMemoryReader extends Reader{
+        public static class InMemoryReader<T> extends Reader<T>{
 
             private final InputAttemptIdentifier taskAttemptId;
             private final MergeManager merger;
             DataInputBuffer memDataIn = new DataInputBuffer();
             private int start;
             private int length;
-            private int prevKeyPos;
 
             public InMemoryReader(MergeManager merger, InputAttemptIdentifier taskAttemptId,
-                                  byte[] data, int start, int length, TypeSerializer serializer)
+                                  byte[] data, int start, int length, TypeSerializer<T> serializer)
                     throws IOException {
                 super(null, length - start, null, null, false, 0, -1, serializer);
                 this.merger = merger;
@@ -392,14 +355,6 @@ public class StratosphereIFile {
                 memDataIn.reset(buffer, start + offset, length);
                 bytesRead = offset;
                 eof = false;
-            }
-
-            @Override
-            public long getPosition() throws IOException {
-                // InMemoryReader does not initialize streams like Reader, so in.getPos()
-                // would not work. Instead, return the number of uncompressed bytes read,
-                // which will be correct since in-memory data is not compressed.
-                return bytesRead;
             }
 
             @Override
@@ -421,7 +376,7 @@ public class StratosphereIFile {
             }
 
             @Override
-            public Object readElement() throws IOException {
+            public T readElement() throws IOException {
                 try {
                     if (!positionToNextRecord(memDataIn)) {
                         return null;
@@ -442,7 +397,7 @@ public class StratosphereIFile {
                     // Record the byte
                     bytesRead += currentElementLength;
 
-                    Object reuse = serializer.createInstance();
+                    T reuse = serializer.createInstance();
                     reuse = serializer.deserialize(reuse, new InputViewHelper(elementBuffer));
                     return reuse;
                 } catch (IOException ioe) {

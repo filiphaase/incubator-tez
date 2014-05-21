@@ -29,7 +29,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * Test class for using stratosphere serializer as output.
  * Mainly based on Tez-class OnFileUnorderedKVOutput.java
  */
-public class OnFileUnorderedStratosphereOutput extends AbstractLogicalOutput {
+public class OnFileUnorderedStratosphereOutput<T> extends AbstractLogicalOutput {
 
     private static final Log LOG = LogFactory.getLog(OnFileUnorderedStratosphereOutput.class);
 
@@ -38,7 +38,7 @@ public class OnFileUnorderedStratosphereOutput extends AbstractLogicalOutput {
     //private int numPhysicalOutputs;
     // Do we need the checksum stuff here?
     private FSDataOutputStream out;
-    private FileBasedTupleWriter writer;
+    private FileBasedTupleWriter<T> writer;
 
     private boolean dataViaEventsEnabled;
     private int dataViaEventsMaxSize;
@@ -71,7 +71,7 @@ public class OnFileUnorderedStratosphereOutput extends AbstractLogicalOutput {
     }
 
     @Override
-    public FileBasedTupleWriter getWriter() throws Exception {
+    public StratosphereWriter<T> getWriter() throws Exception {
         Preconditions.checkState(isStarted.get(), "Cannot get writer before starting the Output");
         return this.writer;
     }

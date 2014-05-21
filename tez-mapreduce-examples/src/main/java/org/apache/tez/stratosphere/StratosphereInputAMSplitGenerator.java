@@ -56,7 +56,7 @@ public class StratosphereInputAMSplitGenerator implements TezRootInputInitialize
             if (LOG.isDebugEnabled()) {
                 sw.reset().start();
             }
-            Configuration conf = MRHelpers.createConfFromByteString(userPayloadProto
+            Configuration conf = StratosphereHelpers.createConfFromByteString(userPayloadProto
                     .getConfigurationBytes());
 
             sendSerializedEvents = conf.getBoolean(

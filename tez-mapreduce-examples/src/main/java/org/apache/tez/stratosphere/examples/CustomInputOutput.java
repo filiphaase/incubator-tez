@@ -63,7 +63,7 @@ import java.util.TreeMap;
 public class CustomInputOutput extends Configured implements Tool {
   public static class TokenProcessor extends SimpleMRProcessor {
 
-      private static final Log LOG = LogFactory.getLog(TokenProcessor.class);
+    private static final Log LOG = LogFactory.getLog(TokenProcessor.class);
 
     @Override
     public void run() throws Exception {
@@ -74,7 +74,7 @@ public class CustomInputOutput extends Configured implements Tool {
       StratosphereReader<String> reader = input.getReader();
 
       OnFileUnorderedStratosphereOutput output = (OnFileUnorderedStratosphereOutput) getOutputs().values().iterator().next();
-      FileBasedTupleWriter tupleWriter = output.getWriter();
+      StratosphereWriter<Tuple2<String, Integer>> tupleWriter = output.getWriter();
 
       while (reader.hasNext()) {
         String s = reader.getNext();
@@ -91,17 +91,21 @@ public class CustomInputOutput extends Configured implements Tool {
 
   public static class SumProcessor extends SimpleMRProcessor {
 
+    private static final Log LOG = LogFactory.getLog(SumProcessor.class);
+
     @Override
     public void run() throws Exception {
       Preconditions.checkArgument(getInputs().size() == 1);
 
-      MROutput out = (MROutput) getOutputs().values().iterator().next();
-      KeyValueWriter kvWriter = out.getWriter();
+      StratosphereOutput out = (StratosphereOutput) getOutputs().values().iterator().next();
+      StratosphereWriter<String> writer = out.getWriter();
+
       ShuffledUnorderedStratosphereInput tupleInput = (ShuffledUnorderedStratosphereInput) getInputs().values().iterator().next();
-      ShuffledUnorderedTupleReader tupleReader = tupleInput.getReader();
-      while (tupleReader.next()) {
-        Tuple2<String, Integer> curr = (Tuple2<String, Integer>)tupleReader.getCurrentTuple();
-        kvWriter.write(new Text("Stratosphere " + curr.f0), new IntWritable(curr.f1));
+      StratosphereReader<Tuple2<String,Integer>> tupleReader = tupleInput.getReader();
+
+      while (tupleReader.hasNext()) {
+        Tuple2<String, Integer> curr = (Tuple2<String, Integer>)tupleReader.getNext();
+        writer.write("Stratosphere " + curr.f0);
       }
     }
   }
@@ -118,7 +122,7 @@ public class CustomInputOutput extends Configured implements Tool {
 
     Configuration outputConf = new Configuration(tezConf);
     outputConf.set(FileOutputFormat.OUTDIR, outputPath);
-    OutputDescriptor od = new OutputDescriptor(MROutput.class.getName())
+    OutputDescriptor od = new OutputDescriptor(StratosphereOutput.class.getName())
       .setUserPayload(MROutput.createUserPayload(
           outputConf, TextOutputFormat.class.getName(), true));
     
@@ -136,7 +140,7 @@ public class CustomInputOutput extends Configured implements Tool {
             SumProcessor.class.getName()), 1, MRHelpers.getReduceResource(tezConf));
     summerVertex.setJavaOpts(
         MRHelpers.getReduceJavaOpts(tezConf));
-    summerVertex.addOutput("MROutput", od, MROutputCommitter.class);
+    summerVertex.addOutput("StratosphereOutput", od, StratosphereOutputCommiter.class);
     
     DAG dag = new DAG("StratosphereCustomInputOutput");
     dag.addVertex(tokenizerVertex)

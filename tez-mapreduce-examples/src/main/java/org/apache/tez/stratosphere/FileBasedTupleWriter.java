@@ -29,7 +29,7 @@ import java.io.*;
 /**
  * Created by filip on 15.05.14.
  */
-public class FileBasedTupleWriter<T> implements Writer{
+public class FileBasedTupleWriter<T> implements StratosphereWriter<T>{
 
     private static final Log LOG = LogFactory.getLog(FileBasedTupleWriter.class);
 

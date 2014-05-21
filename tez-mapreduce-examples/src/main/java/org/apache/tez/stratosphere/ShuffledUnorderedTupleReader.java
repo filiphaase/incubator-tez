@@ -29,7 +29,7 @@ import java.io.IOException;
 /**
  * Created by filip on 15.05.14.
  */
-public class ShuffledUnorderedTupleReader<T> implements Reader{
+public class ShuffledUnorderedTupleReader<T> implements StratosphereReader<T>{
 
     private static final Log LOG = LogFactory.getLog(ShuffledUnorderedTupleReader.class);
 
@@ -75,7 +75,7 @@ public class ShuffledUnorderedTupleReader<T> implements Reader{
      * @throws IOException
      *           if an error occurs
      */
-    public boolean next() throws IOException {
+    public boolean hasNext() throws IOException {
         if (readNextFromCurrentReader()) {
             inputRecordCounter.increment(1);
             numRecordsRead++;
@@ -95,7 +95,8 @@ public class ShuffledUnorderedTupleReader<T> implements Reader{
         }
     }
 
-    public Object getCurrentTuple(){
+    @Override
+    public T getNext() throws Exception {
         return this.tuple;
     }
 

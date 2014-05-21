@@ -1,5 +1,7 @@
 package org.apache.tez.stratosphere;
 
+import eu.stratosphere.api.java.io.TextInputFormat;
+import eu.stratosphere.configuration.Configuration;
 import eu.stratosphere.core.fs.*;
 import eu.stratosphere.core.io.InputSplit;
 import org.apache.commons.logging.Log;
@@ -20,18 +22,22 @@ public class StratosphereHelpers {
 
     private static final Log LOG = LogFactory.getLog(StratosphereHelpers.class);
 
-    private static final float MAX_SPLIT_SIZE_DISCREPANCY = 1.1f;
 
     //  From stratosphere AbstractFileInput
     @SuppressWarnings({ "rawtypes", "unchecked" })
     @InterfaceAudience.Private
-    public static FileInputSplit[] generateNewSplits(
+    public static FileInputSplit[] generateSplits(
             JobContext jobContext, String inputFormatName, int numTasks)
             throws ClassNotFoundException, IOException,
             InterruptedException {
 
-        final String pathURI = jobContext.getConfiguration().get(FileInputFormat.INPUT_DIR);
-        if (pathURI == null) {
+        final String pathURI = "hdfs://" + jobContext.getConfiguration().get(FileInputFormat.INPUT_DIR);
+        System.out.println("PathURI: " + pathURI);
+        LOG.info("PathURI LOG: " + pathURI);
+        TextInputFormat inputFormat = new TextInputFormat(new Path(pathURI));
+        inputFormat.configure(new Configuration());
+        return inputFormat.createInputSplits(1);
+        /*if (pathURI == null) {
             throw new IOException("The path to the file was not found in the runtime configuration.");
         }
 
@@ -49,6 +55,7 @@ public class StratosphereHelpers {
         long totalLength = 0;
 
         final FileSystem fs = path.getFileSystem();
+        LOG.info("Using Filesystem: " + fs);
         final FileStatus pathFile = fs.getFileStatus(path);
 
         if (pathFile.isDir()) {
@@ -129,7 +136,7 @@ public class StratosphereHelpers {
             }
         }
 
-        return inputSplits.toArray(new FileInputSplit[inputSplits.size()]);
+        return inputSplits.toArray(new FileInputSplit[inputSplits.size()]);*/
     }
 
     //  From stratosphere AbstractFileInput

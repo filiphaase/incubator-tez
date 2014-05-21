@@ -7,12 +7,12 @@ import eu.stratosphere.core.io.InputSplit;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.io.DataOutputBuffer;
 import org.apache.hadoop.mapred.JobConf;
 import org.apache.hadoop.mapreduce.Job;
 import org.apache.hadoop.security.UserGroupInformation;
 import org.apache.tez.dag.api.TezConfiguration;
 import org.apache.tez.dag.api.VertexLocationHint;
-import org.apache.tez.mapreduce.hadoop.InputSplitInfoMem;
 import org.apache.tez.mapreduce.hadoop.MRHelpers;
 import org.apache.tez.mapreduce.hadoop.MRJobConfig;
 import org.apache.tez.mapreduce.protos.MRRuntimeProtos;
@@ -23,7 +23,6 @@ import org.apache.tez.runtime.api.events.RootInputConfigureVertexTasksEvent;
 import org.apache.tez.runtime.api.events.RootInputDataInformationEvent;
 
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 
@@ -79,7 +78,8 @@ public class StratosphereInputAMSplitGenerator implements TezRootInputInitialize
                     TezConfiguration.TEZ_AM_GROUPING_SPLIT_WAVES,
                     TezConfiguration.TEZ_AM_GROUPING_SPLIT_WAVES_DEFAULT);
 
-            int numTasks = (int)((totalResource*waves)/taskResource);
+            //int numTasks = (int)((totalResource*waves)/taskResource);
+            int numTasks = 1;
 
             LOG.info("Input " + rootInputContext.getInputName() + " asking for " + numTasks
                     + " tasks. Headroom: " + totalResource + " Task Resource: "
@@ -93,7 +93,9 @@ public class StratosphereInputAMSplitGenerator implements TezRootInputInitialize
             LOG.info("Grouping stratosphere input splits");
 
             Job job = Job.getInstance(jobConf);
-            FileInputSplit[] splits = StratosphereHelpers.generateNewSplits(job, realInputFormatName, numTasks);
+            FileInputSplit[] splits = StratosphereHelpers.generateSplits(job, realInputFormatName, 1);
+
+            LOG.info("Having #splits+++" + splits.length);
 
             // Move all this into a function
             List<VertexLocationHint.TaskLocationHint> locationHints = Lists
@@ -115,7 +117,9 @@ public class StratosphereInputAMSplitGenerator implements TezRootInputInitialize
             events.add(configureVertexEvent);
             int count = 0;
             for (InputSplit split : splits) {
-                RootInputDataInformationEvent diEvent = new RootInputDataInformationEvent(count++, split);
+                DataOutputBuffer buffer = new DataOutputBuffer();
+                split.write(buffer);
+                RootInputDataInformationEvent diEvent = new RootInputDataInformationEvent(count++, buffer.getData());
                 events.add(diEvent);
             }
             return events;

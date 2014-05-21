@@ -18,8 +18,10 @@
 package org.apache.tez.stratosphere.examples;
 
 import com.google.common.base.Preconditions;
-//import eu.stratosphere.api.java.io.TextInputFormat;
+import eu.stratosphere.api.java.io.TextInputFormat;
 import eu.stratosphere.api.java.tuple.Tuple2;
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.conf.Configured;
 import org.apache.hadoop.fs.FileSystem;
@@ -27,8 +29,6 @@ import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.IntWritable;
 import org.apache.hadoop.io.Text;
 import org.apache.hadoop.mapred.FileAlreadyExistsException;
-import org.apache.hadoop.mapred.FileInputFormat;
-import org.apache.hadoop.mapreduce.lib.input.TextInputFormat;
 import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
 import org.apache.hadoop.mapreduce.lib.output.TextOutputFormat;
 import org.apache.hadoop.mapreduce.security.TokenCache;
@@ -63,6 +63,8 @@ import java.util.TreeMap;
 public class CustomInputOutput extends Configured implements Tool {
   public static class TokenProcessor extends SimpleMRProcessor {
 
+      private static final Log LOG = LogFactory.getLog(TokenProcessor.class);
+
     @Override
     public void run() throws Exception {
       Preconditions.checkArgument(getInputs().size() == 1);
@@ -75,7 +77,10 @@ public class CustomInputOutput extends Configured implements Tool {
       FileBasedTupleWriter tupleWriter = output.getWriter();
 
       while (reader.hasNext()) {
-        StringTokenizer itr = new StringTokenizer(reader.getNext());
+        String s = reader.getNext();
+        if(s == null)
+            continue;
+        StringTokenizer itr = new StringTokenizer(s);
         while (itr.hasMoreTokens()) {
           tupleWriter.write(new Tuple2<String, Integer>(itr.nextToken(), 1));
         }
@@ -124,7 +129,7 @@ public class CustomInputOutput extends Configured implements Tool {
     Vertex tokenizerVertex = new Vertex("tokenizer", new ProcessorDescriptor(
         TokenProcessor.class.getName()), -1, MRHelpers.getMapResource(tezConf));
     tokenizerVertex.setJavaOpts(MRHelpers.getMapJavaOpts(tezConf));
-    tokenizerVertex.addInput("MRInput", id, MRInputAMSplitGenerator.class);
+    tokenizerVertex.addInput("StratosphereInput", id, StratosphereInputAMSplitGenerator.class);
 
     Vertex summerVertex = new Vertex("summer",
         new ProcessorDescriptor(
@@ -138,7 +143,7 @@ public class CustomInputOutput extends Configured implements Tool {
         .addVertex(summerVertex)
         .addEdge(
             new Edge(tokenizerVertex, summerVertex, new EdgeProperty(
-                DataMovementType.BROADCAST, DataSourceType.PERSISTED,
+                DataMovementType.SCATTER_GATHER, DataSourceType.PERSISTED,
                 SchedulingType.SEQUENTIAL,
                 new OutputDescriptor(OnFileUnorderedStratosphereOutput.class.getName())
                         .setUserPayload(intermediateDataPayload),

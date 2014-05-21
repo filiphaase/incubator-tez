@@ -1,6 +1,7 @@
 package org.apache.tez.stratosphere;
 
 import com.google.common.base.Preconditions;
+import com.google.common.io.ByteArrayDataInput;
 import eu.stratosphere.api.common.typeutils.TypeSerializer;
 import eu.stratosphere.api.common.typeutils.base.StringSerializer;
 import eu.stratosphere.api.java.io.TextInputFormat;
@@ -13,6 +14,7 @@ import org.apache.hadoop.classification.InterfaceAudience;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.io.DataInputBuffer;
 import org.apache.hadoop.io.serializer.SerializationFactory;
 import org.apache.hadoop.mapred.JobConf;
 import org.apache.hadoop.mapred.TaskAttemptID;
@@ -33,6 +35,7 @@ import org.apache.tez.runtime.api.AbstractLogicalInput;
 import org.apache.tez.runtime.api.Event;
 import org.apache.tez.runtime.api.events.RootInputDataInformationEvent;
 
+import java.io.DataInputStream;
 import java.io.IOException;
 import java.util.List;
 import java.util.concurrent.locks.Condition;
@@ -58,10 +61,10 @@ public class StratosphereInput<T> extends AbstractLogicalInput {
     private boolean readerCreated = false;
 
     org.apache.hadoop.mapreduce.TaskAttemptContext taskAttemptContext;
-    protected InputFormat<T, ?> inputFormat;
+    protected TextInputFormat inputFormat;
     protected TypeSerializer<T> serializer;
     protected StratosphereReader<T> recordReader;
-    protected InputSplit inputSplit;
+    protected FileInputSplit inputSplit;
 
     protected JobSplit.TaskSplitIndex splitMetaInfo = new JobSplit.TaskSplitIndex();
 
@@ -148,26 +151,27 @@ public class StratosphereInput<T> extends AbstractLogicalInput {
                         thisTaskMetaInfo.getSplitLocation(),
                         thisTaskMetaInfo.getStartOffset());
                 setupInputFormat();
-                inputSplit = getSplitDetailsFromDisk(splitMetaInfo);
+                inputSplit = (FileInputSplit)getSplitDetailsFromDisk(splitMetaInfo);
                 setupRecordReader();
             }
         } finally {
             rrLock.unlock();
         }
-        LOG.info("Initialzed MRInput: " + getContext().getSourceVertexName());
+        LOG.info("Initialzed StratosphereInput: " + getContext().getSourceVertexName());
     }
 
     private void setupInputFormat() throws IOException {
         // TODO
         LOG.info("setupInputFormat for stratosphere with path: " + this.jobConf.get(FileInputFormat.INPUT_DIR));
-        this.inputFormat = (InputFormat<T, ?>)new TextInputFormat(new eu.stratosphere.core.fs.Path(
+        this.inputFormat = new TextInputFormat(new eu.stratosphere.core.fs.Path(
                 this.jobConf.get(FileInputFormat.INPUT_DIR)));
+        this.inputFormat.configure(new eu.stratosphere.configuration.Configuration());
         this.serializer = (TypeSerializer<T>)new StringSerializer();
     }
 
     private void setupRecordReader() throws IOException {
         Preconditions.checkNotNull(inputSplit, "Input split hasn't yet been setup");
-        recordReader = new StratosphereInputReader<T>(inputFormat, serializer);
+        recordReader = new StratosphereInputReader<T>(serializer);
     }
 
     @Override
@@ -184,9 +188,9 @@ public class StratosphereInput<T> extends AbstractLogicalInput {
             rrLock.unlock();
         }
 
-        LOG.info("Creating reader for MRInput: "
+        LOG.info("Creating reader for StratosphereInput: "
                 + getContext().getSourceVertexName());
-        return new StratosphereInputReader<T>(inputFormat, serializer);
+        return new StratosphereInputReader<T>(serializer);
     }
 
     @Override
@@ -252,24 +256,15 @@ public class StratosphereInput<T> extends AbstractLogicalInput {
         }
     }
 
-    @InterfaceAudience.Private
-    void initFromEvent(RootInputDataInformationEvent initEvent)
-            throws IOException {
-        rrLock.lock();
-        try {
-            initFromEventInternal(initEvent);
-        } finally {
-            rrLock.unlock();
-        }
-    }
-
     private void initFromEventInternal(RootInputDataInformationEvent initEvent)
             throws IOException {
         LOG.info("Initializing RecordReader from event");
         Preconditions.checkState(initEvent != null, "InitEvent must be specified");
-        MRRuntimeProtos.MRSplitProto splitProto = MRRuntimeProtos.MRSplitProto
-                .parseFrom(initEvent.getUserPayload());
-        inputSplit = getSplitDetailsFromEvent(splitProto, jobConf);
+        inputSplit = (FileInputSplit)getSplitDetailsFromEvent(initEvent.getUserPayload(), jobConf);
+        //eu.stratosphere.configuration.Configuration strConf = new eu.stratosphere.configuration.Configuration();
+        //strConf.set
+        ((TextInputFormat)inputFormat).setCharsetName("UTF-8");
+        inputFormat.open(inputSplit);
         LOG.info("Split Details -> SplitClass: "
             + inputSplit.getClass().getName() + ", InputSplit: " + inputSplit);
         setupRecordReader();
@@ -278,27 +273,15 @@ public class StratosphereInput<T> extends AbstractLogicalInput {
 
     @InterfaceAudience.Private
     public static InputSplit getSplitDetailsFromEvent(
-            MRRuntimeProtos.MRSplitProto splitProto, Configuration conf) throws IOException {
-        Preconditions.checkNotNull(splitProto, "splitProto must be specified");
+            byte[] payload, Configuration conf) throws IOException {
+        Preconditions.checkNotNull(payload, "splitProto must be specified");
 
-        splitProto.getSplitBytes();
         SerializationFactory serializationFactory = new SerializationFactory(conf);
-        String className = splitProto.getSplitClassName();
-        Class<org.apache.hadoop.mapred.InputSplit> clazz;
-
-        try {
-            clazz = (Class<org.apache.hadoop.mapred.InputSplit>) Class
-                    .forName(className);
-        } catch (ClassNotFoundException e) {
-            throw new IOException("Failed to load InputSplit class: [" + className + "]", e);
-        }
-        org.apache.hadoop.io.serializer.Deserializer<org.apache.hadoop.mapred.InputSplit> deserializer = serializationFactory
-                .getDeserializer(clazz);
-        deserializer.open(splitProto.getSplitBytes().newInput());
-        org.apache.hadoop.mapred.InputSplit inputSplit = deserializer
-                .deserialize(null);
-        deserializer.close();
-        return new HadoopInputSplitWrapper(inputSplit);
+        FileInputSplit inputSplit = new FileInputSplit();
+        DataInputBuffer buffer = new DataInputBuffer();
+        buffer.reset(payload, payload.length);
+        inputSplit.read(buffer);
+        return inputSplit;
     }
 
     @SuppressWarnings("unchecked")
@@ -341,23 +324,21 @@ public class StratosphereInput<T> extends AbstractLogicalInput {
 
     private class StratosphereInputReader<T> implements StratosphereReader<T> {
 
-        private InputFormat<T, ?> in;
         private TypeSerializer<T> serializer;
-        StratosphereInputReader(InputFormat<T, ?> in, TypeSerializer<T> serializer) {
-            this.in = in;
+        StratosphereInputReader(TypeSerializer<T> serializer) {
             this.serializer = serializer;
         }
 
         @SuppressWarnings("unchecked")
         @Override
         public boolean hasNext() throws IOException {
-            return !in.reachedEnd();
+            return !inputFormat.reachedEnd();
         }
 
         @Override
         public T getNext() throws Exception{
             T reuse = serializer.createInstance();
-            reuse = in.nextRecord(reuse);
+            reuse = ((InputFormat<T, ?>)inputFormat).nextRecord(reuse);
             return reuse;
         }
     }

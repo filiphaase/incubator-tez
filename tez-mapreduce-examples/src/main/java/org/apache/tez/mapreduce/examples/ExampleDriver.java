@@ -49,7 +49,9 @@ public class ExampleDriver {
     int exitCode = -1;
     ProgramDriver pgd = new ProgramDriver();
     try {
-      pgd.addClass("stratosphere", CustomInputOutput.class,
+      pgd.addClass("stratosphereWordCount", org.apache.tez.stratosphere.examples.WordCount.class,
+          "Stratosphere wordcount test.");
+      pgd.addClass("stratosphereInOut", CustomInputOutput.class,
           "Stratosphere input/output test.");
       pgd.addClass("stratosphereWritable", WordCountStratosphereWritable.class,
                 "Stratosphere writable input/output test.");

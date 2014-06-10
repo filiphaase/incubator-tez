@@ -5,31 +5,22 @@ import com.google.protobuf.ByteString;
 import eu.stratosphere.api.java.io.TextInputFormat;
 import eu.stratosphere.configuration.Configuration;
 import eu.stratosphere.core.fs.*;
-import eu.stratosphere.core.fs.FileSystem;
 import eu.stratosphere.core.fs.Path;
-import eu.stratosphere.core.io.InputSplit;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.classification.InterfaceAudience;
-import org.apache.hadoop.fs.*;
 import org.apache.hadoop.mapred.JobConf;
 import org.apache.hadoop.mapreduce.JobContext;
-import org.apache.hadoop.mapreduce.lib.input.FileInputFormat;
 import org.apache.hadoop.yarn.api.records.Resource;
 import org.apache.tez.common.TezJobConfig;
 import org.apache.tez.common.TezUtils;
-import org.apache.tez.mapreduce.combine.MRCombiner;
 import org.apache.tez.mapreduce.hadoop.MRJobConfig;
 import org.apache.tez.mapreduce.hadoop.MultiStageMRConfToTezTranslator;
 import org.apache.tez.mapreduce.partition.MRPartitioner;
 import org.apache.tez.mapreduce.protos.MRRuntimeProtos;
 
-import javax.annotation.Nullable;
 import java.io.IOException;
 import java.net.InetAddress;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
 
 /**
  * Created by filip on 19.05.14.

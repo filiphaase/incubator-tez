@@ -92,6 +92,16 @@
        <artifactId>stratosphere-clients</artifactId>
        <version>0.5-SNAPSHOT</version>
      </dependency>
+      <dependency>
+          <groupId>eu.stratosphere</groupId>
+          <artifactId>stratosphere-core</artifactId>
+          <version>0.5-SNAPSHOT</version>
+      </dependency>
+      <dependency>
+          <groupId>eu.stratosphere</groupId>
+          <artifactId>stratosphere-runtime</artifactId>
+          <version>0.5-SNAPSHOT</version>
+      </dependency>
   </dependencies>
   
   <build>

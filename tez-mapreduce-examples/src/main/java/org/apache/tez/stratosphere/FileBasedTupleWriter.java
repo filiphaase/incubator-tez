@@ -7,6 +7,8 @@ import eu.stratosphere.api.common.typeutils.base.IntSerializer;
 
 import eu.stratosphere.api.java.tuple.Tuple2;
 import eu.stratosphere.api.java.typeutils.runtime.TupleSerializer;
+import eu.stratosphere.util.MutableObjectIterator;
+import org.apache.commons.lang.mutable.MutableObject;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
@@ -18,7 +20,6 @@ import org.apache.hadoop.io.IOUtils;
 import org.apache.tez.common.counters.TaskCounter;
 import org.apache.tez.common.counters.TezCounter;
 import org.apache.tez.runtime.api.TezOutputContext;
-import org.apache.tez.runtime.api.Writer;
 import org.apache.tez.runtime.library.common.TezRuntimeUtils;
 import org.apache.tez.runtime.library.common.sort.impl.TezIndexRecord;
 import org.apache.tez.runtime.library.common.sort.impl.TezSpillRecord;
@@ -58,7 +59,7 @@ public class FileBasedTupleWriter<T> implements StratosphereWriter<T>{
     private final TypeSerializer<T> serializer;
 
 
-    public FileBasedTupleWriter(TezOutputContext outputContext, Configuration conf) throws IOException {
+    public FileBasedTupleWriter(TezOutputContext outputContext, Configuration conf, TypeSerializer<T> serializer) throws IOException {
         this.conf = conf;
 
         this.outputRecordsCounter = outputContext.getCounters().findCounter(TaskCounter.OUTPUT_RECORDS);
@@ -72,17 +73,14 @@ public class FileBasedTupleWriter<T> implements StratosphereWriter<T>{
                 outputContext);
         this.outputPath = outputFileManager.getOutputFileForWrite();
 
-        // We need tlo give this by constructor
-        this.serializer = (TypeSerializer<T>) new TupleSerializer(Tuple2.class, new TypeSerializer[] {
-                new StringSerializer(),
-                new IntSerializer()
-        });
+        this.serializer = serializer;
 
         this.writer = new StratosphereIFile.Writer<T>(conf, rfs, outputPath,
                 Tuple2.class, null, outputBytesCounter, serializer);
     }
 
     public void write(T input) throws IOException{
+        //LOG.info("Writing input element in FileBasedTupleWriter +++: " + input);
         // write into TEZ Writer
         this.writer.append(input);
         outputRecordsCounter.increment(1);
@@ -139,4 +137,7 @@ public class FileBasedTupleWriter<T> implements StratosphereWriter<T>{
         return buf;
     }
 
+    public MutableObjectIterator<T> getDataIterator() throws IOException{
+        return writer.getMutableObjectIterator(conf);
+    }
 }

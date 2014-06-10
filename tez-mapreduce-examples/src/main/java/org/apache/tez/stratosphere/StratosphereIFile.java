@@ -1,16 +1,22 @@
 package org.apache.tez.stratosphere;
 
 import eu.stratosphere.api.common.typeutils.TypeSerializer;
+import eu.stratosphere.util.MutableObjectIterator;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.classification.InterfaceAudience;
 import org.apache.hadoop.classification.InterfaceStability;
 import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.FSDataInputStream;
 import org.apache.hadoop.fs.FSDataOutputStream;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.*;
+import org.apache.tez.common.TezJobConfig;
+import org.apache.tez.common.counters.TaskCounter;
 import org.apache.tez.common.counters.TezCounter;
+import org.apache.tez.dag.api.TezConfiguration;
+import org.apache.tez.runtime.api.TezOutputContext;
 import org.apache.tez.runtime.library.common.InputAttemptIdentifier;
 import org.apache.tez.runtime.library.common.shuffle.impl.MergeManager;
 import org.apache.tez.runtime.library.common.sort.impl.IFileInputStream;
@@ -48,6 +54,8 @@ public class StratosphereIFile {
             private final TezCounter writtenRecordsCounter;
             private final TezCounter serializedBytes;
 
+            private final FileSystem fs;
+            private final Path filePath;
             IFileOutputStream checksumOut;
 
             Class clazz;
@@ -56,16 +64,11 @@ public class StratosphereIFile {
             DataOutputBuffer buffer = new DataOutputBuffer();
 
             public Writer(Configuration conf, FileSystem fs, Path file,
-                          Class clazz, TezCounter writesCounter,
-                          TezCounter serializedBytesCounter, TypeSerializer<T> serializer) throws IOException {
-                this(conf, fs.create(file), clazz,writesCounter, serializedBytesCounter, serializer);
-                ownOutputStream = true;
-            }
-
-            public Writer(Configuration conf, FSDataOutputStream out,
                           Class clazz, TezCounter writesCounter, TezCounter serializedBytesCounter,
                           TypeSerializer<T> serializer)
                     throws IOException {
+                FSDataOutputStream out = fs.create(file);
+
                 this.writtenRecordsCounter = writesCounter;
                 this.serializedBytes = serializedBytesCounter;
                 this.checksumOut = new IFileOutputStream(out);
@@ -75,6 +78,8 @@ public class StratosphereIFile {
 
                 this.clazz = clazz;
                 this.serializer = serializer;
+                this.filePath = file;
+                this.fs = fs;
             }
 
             public void close() throws IOException {
@@ -142,37 +147,32 @@ public class StratosphereIFile {
                 return compressedBytesWritten;
             }
 
-/*            public void append(DataInputBuffer element)
-                    throws IOException {
-                int elementLength = element.getLength() - element.getPosition();
-                if (elementLength < 0) {
-                    throw new IOException("Negative key-length not allowed: " + elementLength +
-                            " for " + element);
-                }
+            public MutableObjectIterator<T> getMutableObjectIterator(Configuration conf) throws IOException{
+                FSDataInputStream inputStream = fs.open(filePath);
+                int bufferSize =  conf.getInt("io.file.buffer.size", TezJobConfig.TEZ_RUNTIME_IFILE_BUFFER_SIZE_DEFAULT);
 
-                WritableUtils.writeVInt(out, elementLength);
-                out.write(element.getData(), element.getPosition(), elementLength);
+                //LOG.info("gettingMutableObjectIterator - decompressedBytesWritten: " + decompressedBytesWritten);
+                //LOG.info("gettingMutableObjectIterator - bufferSize: " + bufferSize);
 
-                // Update bytes written
-                decompressedBytesWritten += elementLength +
-                        WritableUtils.getVIntSize(elementLength);
-                if (serializedBytes != null) {
-                    serializedBytes.increment(elementLength);
-                }
-                ++numRecordsWritten;
+                return new IFileIterator<T>(
+                        new Reader<T>(inputStream, compressedBytesWritten, null, null, false, 0,
+                                bufferSize, serializer)
+                );
             }
 
-            // Required for mark/reset
-            public DataOutputStream getOutputStream () {
-                return out;
-            }
+            public static class IFileIterator<T> implements MutableObjectIterator<T>{
+                private Reader<T> r;
+                public IFileIterator(Reader<T> reader){
+                    r = reader;
+                }
 
-            // Required for mark/reset
-            public void updateCountersForExternalAppend(long length) {
-                ++numRecordsWritten;
-                decompressedBytesWritten += length;
-            }*/
+                @Override
+                public T next(T reuse) throws IOException {
+                    return r.readElement();
+                }
+            }
         }
+
 
         /**
          * <code>IFile.Reader</code> to read intermediate map-outputs.
@@ -227,6 +227,8 @@ public class StratosphereIFile {
                 this.fileLength = length;
                 this.serializer = serializer;
                 startPos = checksumIn.getPosition();
+
+                LOG.info("Setting up Reader");
 
                 if (bufferSize != -1) {
                     this.bufferSize = bufferSize;
